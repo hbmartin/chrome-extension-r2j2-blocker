@@ -1,12 +1,36 @@
-// This is the service worker script, which executes in its own context
-// when the extension is installed or refreshed (or when you access its console).
-// It would correspond to the background script in chrome extensions v2.
+importScripts('service-worker-utils.js');
 
-console.log("This prints to the console of the service worker (background script)")
+chrome.webNavigation.onCommitted.addListener(async (details) => {
+  if (details.frameId !== 0) return;
 
-// Importing and using functionality from external files is also possible.
-importScripts('service-worker-utils.js')
+  const url = details.url;
+  if (!url.startsWith('http://') && !url.startsWith('https://')) return;
 
-// If you want to import a file that is deeper in the file hierarchy of your
-// extension, simply do `importScripts('path/to/file.js')`.
-// The path should be relative to the file `manifest.json`.
+  const { settings } = await chrome.storage.sync.get({ settings: DEFAULT_SETTINGS });
+  const s = { ...DEFAULT_SETTINGS, ...settings };
+
+  const blockPatterns = parseLines(s.blocklist);
+  if (blockPatterns.length === 0) return;
+
+  if (!urlMatchesAnyPattern(url, blockPatterns)) return;
+
+  try {
+    const csvText = await fetchJournalCached(s.journalUrl);
+    if (csvText === null) return;
+
+    const keywords = parseLines(s.keywords);
+    if (keywords.length === 0) return;
+
+    const cutoff = Math.floor(Date.now() / 1000) - s.timeframeMinutes * 60;
+    const entries = parseCSV(csvText);
+    const hasMatch = entries.some(e =>
+      e.timestamp >= cutoff && keywords.some(kw => e.text.includes(kw))
+    );
+
+    if (!hasMatch) {
+      chrome.tabs.update(details.tabId, { url: s.blockUrl });
+    }
+  } catch (err) {
+    console.warn('[journal-blocker] Error during check, allowing navigation:', err);
+  }
+}, { url: [{ schemes: ['http', 'https'] }] });

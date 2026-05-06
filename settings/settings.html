@@ -4,9 +4,50 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <link rel="stylesheet" href="settings.css">
-    <title>Chrome Addon v3: Settings</title>
+    <title>Journal Blocker — Settings</title>
 </head>
 <body>
-    This is the <span class="special-text">settings</span> page for the addon.
+    <h1>Journal Blocker Settings</h1>
+
+    <form id="settings-form">
+
+        <div class="field-group">
+            <label for="blocklist">Blocked URL Patterns</label>
+            <p class="hint">One pattern per line. Case-insensitive substring match against the full URL.</p>
+            <textarea id="blocklist" rows="6" placeholder="reddit.com&#10;twitter.com&#10;news.ycombinator.com"></textarea>
+        </div>
+
+        <div class="field-group">
+            <label for="journal-url">Journal CSV URL</label>
+            <p class="hint">URL that returns CSV rows in the format: unix_timestamp,entry text</p>
+            <input type="text" id="journal-url" placeholder="https://example.com/journal.csv">
+        </div>
+
+        <div class="field-group">
+            <label for="keywords">Keywords</label>
+            <p class="hint">One keyword per line. If any appears in a recent journal entry, access is allowed.</p>
+            <textarea id="keywords" rows="4" placeholder="work&#10;project&#10;research"></textarea>
+        </div>
+
+        <div class="field-group">
+            <label for="timeframe">Timeframe (minutes)</label>
+            <p class="hint">Only journal entries from the last N minutes count.</p>
+            <input type="number" id="timeframe" min="1" max="10080" value="60">
+        </div>
+
+        <div class="field-group">
+            <label for="block-url">Block Redirect URL</label>
+            <p class="hint">Where to redirect when a URL is blocked and no journal match is found.</p>
+            <input type="text" id="block-url" placeholder="https://example.com/blocked">
+        </div>
+
+        <div class="actions">
+            <button type="submit" id="save-btn">Save Settings</button>
+            <span id="save-status" class="save-status" aria-live="polite"></span>
+        </div>
+
+    </form>
+
+    <script src="settings.js"></script>
 </body>
 </html>
