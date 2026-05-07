@@ -18,12 +18,13 @@ async function loadSettings() {
 
 async function saveSettings(e) {
   e.preventDefault();
+  const blockUrl = document.getElementById('block-url').value.trim() || DEFAULT_SETTINGS.blockUrl;
   const settings = {
     blocklist: document.getElementById('blocklist').value,
     journalUrl: document.getElementById('journal-url').value.trim(),
     keywords: document.getElementById('keywords').value,
     timeframeMinutes: parseInt(document.getElementById('timeframe').value, 10) || 60,
-    blockUrl: document.getElementById('block-url').value.trim()
+    blockUrl
   };
   await chrome.storage.sync.set({ settings });
   const status = document.getElementById('save-status');

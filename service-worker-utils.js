@@ -13,7 +13,11 @@ async function fetchJournalCached(journalUrl) {
   if (!journalUrl) return null;
 
   const now = Date.now();
-  if (journalCache && (now - journalCache.fetchedAt) < CACHE_TTL_MS) {
+  if (
+    journalCache &&
+    journalCache.url === journalUrl &&
+    (now - journalCache.fetchedAt) < CACHE_TTL_MS
+  ) {
     return journalCache.text;
   }
 
@@ -24,7 +28,7 @@ async function fetchJournalCached(journalUrl) {
       return null;
     }
     const text = await response.text();
-    journalCache = { text, fetchedAt: now };
+    journalCache = { url: journalUrl, text, fetchedAt: now };
     return text;
   } catch (err) {
     console.warn('[journal-blocker] Journal fetch failed:', err);

@@ -49,8 +49,8 @@ async function init() {
   }
 
   if (urlMatchesAnyPattern(url, patterns)) {
-    statusIcon.className = 'status-icon blocked';
-    statusText.textContent = 'This URL is on the blocklist';
+    statusIcon.className = 'status-icon neutral';
+    statusText.textContent = 'This URL requires a journal check';
   } else {
     statusIcon.className = 'status-icon allowed';
     statusText.textContent = 'This URL is not blocked';
