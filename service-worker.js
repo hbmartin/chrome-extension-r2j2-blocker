@@ -10,22 +10,38 @@ function normalizeSettings(settings) {
   };
 }
 
-const settingsReady = chrome.storage.sync.get({ settings: DEFAULT_SETTINGS }).then(({ settings }) => {
-  currentSettings = normalizeSettings(settings);
-});
+const settingsReady = chrome.storage.sync.get({ settings: DEFAULT_SETTINGS })
+  .then(({ settings }) => {
+    currentSettings = normalizeSettings(settings);
+  })
+  .catch(err => {
+    console.warn('[journal-blocker] Failed to load settings, using defaults:', err);
+    currentSettings = DEFAULT_SETTINGS;
+  });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'sync' || !changes.settings) return;
   currentSettings = normalizeSettings(changes.settings.newValue);
 });
 
-function redirectToBlockUrl(tabId, currentUrl, blockUrl, blockPatterns) {
-  if (currentUrl === blockUrl) return;
-  if (urlMatchesAnyPattern(blockUrl, blockPatterns)) {
-    console.warn('[journal-blocker] blockUrl matches blocklist; refusing to redirect');
-    return;
+function urlsAreEqual(firstUrl, secondUrl) {
+  try {
+    return new URL(firstUrl).href === new URL(secondUrl).href;
+  } catch (err) {
+    return firstUrl === secondUrl;
   }
-  chrome.tabs.update(tabId, { url: blockUrl });
+}
+
+function redirectToBlockUrl(tabId, currentUrl, blockUrl, blockPatterns) {
+  let targetUrl = blockUrl;
+  if (urlMatchesAnyPattern(targetUrl, blockPatterns)) {
+    console.warn('[journal-blocker] blockUrl matches blocklist; using safe fallback');
+    targetUrl = DEFAULT_SETTINGS.blockUrl;
+  }
+  if (urlsAreEqual(currentUrl, targetUrl)) return;
+  chrome.tabs.update(tabId, { url: targetUrl }).catch(err => {
+    console.warn('[journal-blocker] Redirect failed:', err);
+  });
 }
 
 chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
