@@ -6,6 +6,11 @@ const DEFAULT_SETTINGS = {
   blockUrl: "about:blank"
 };
 
+const BLOCKED_ATTEMPTS_STORAGE_KEY = 'blockedAttempts';
+const INTENTIONAL_SESSIONS_STORAGE_KEY = 'intentionalSessions';
+const MAX_BLOCKED_ATTEMPTS = 500;
+const MAX_INTENTIONAL_SESSIONS = 500;
+
 let journalCache = null;
 const CACHE_TTL_MS = 60 * 1000;
 
@@ -114,6 +119,14 @@ function parseLines(rawValue) {
 function urlMatchesAnyPattern(url, patterns) {
   const lowerUrl = url.toLowerCase();
   return patterns.some(pattern => lowerUrl.includes(pattern));
+}
+
+function domainFromUrl(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch (err) {
+    return '';
+  }
 }
 
 function findMatchingPattern(url, patterns) {

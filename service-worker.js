@@ -1,8 +1,6 @@
 importScripts('service-worker-utils.js');
 
 let currentSettings = DEFAULT_SETTINGS;
-const BLOCKED_ATTEMPTS_STORAGE_KEY = 'blockedAttempts';
-const MAX_BLOCKED_ATTEMPTS = 500;
 
 function normalizeSettings(settings) {
   const merged = { ...DEFAULT_SETTINGS, ...settings };
@@ -31,14 +29,6 @@ function urlsAreEqual(firstUrl, secondUrl) {
     return new URL(firstUrl).href === new URL(secondUrl).href;
   } catch (err) {
     return firstUrl === secondUrl;
-  }
-}
-
-function domainFromUrl(url) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch (err) {
-    return '';
   }
 }
 
@@ -99,6 +89,54 @@ async function markAttemptsJournaledLater(url, match) {
   }
 }
 
+async function loadIntentionalSessions() {
+  const result = await chrome.storage.local.get({ [INTENTIONAL_SESSIONS_STORAGE_KEY]: [] });
+  const sessions = result[INTENTIONAL_SESSIONS_STORAGE_KEY];
+  return Array.isArray(sessions) ? sessions : [];
+}
+
+async function saveIntentionalSessions(sessions) {
+  await chrome.storage.local.set({
+    [INTENTIONAL_SESSIONS_STORAGE_KEY]: sessions.slice(-MAX_INTENTIONAL_SESSIONS)
+  });
+}
+
+async function recordIntentionalSession(url, match) {
+  try {
+    if (!match) return;
+    const domain = domainFromUrl(url);
+    if (!domain) return;
+
+    const sessions = await loadIntentionalSessions();
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const existing = sessions.find(session =>
+      session.domain === domain &&
+      session.keyword === match.keyword &&
+      session.journalTimestamp === match.entry.timestamp
+    );
+
+    if (existing) {
+      existing.lastSeenAt = nowSeconds;
+      existing.visitCount = (existing.visitCount || 1) + 1;
+    } else {
+      sessions.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        domain,
+        keyword: match.keyword,
+        timestamp: nowSeconds,
+        lastSeenAt: nowSeconds,
+        journalTimestamp: match.entry.timestamp,
+        expiresAt: match.expiresAt,
+        visitCount: 1
+      });
+    }
+
+    await saveIntentionalSessions(sessions);
+  } catch (err) {
+    console.warn('[journal-blocker] Failed to record intentional session:', err);
+  }
+}
+
 function redirectToBlockUrl(tabId, currentUrl, blockUrl, blockPatterns) {
   let targetUrl = blockUrl;
   if (urlMatchesAnyPattern(targetUrl, blockPatterns)) {
@@ -135,6 +173,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
       await recordBlockedAttempt(url, matchedPattern);
       redirectToBlockUrl(details.tabId, url, s.blockUrl, blockPatterns);
     } else {
+      await recordIntentionalSession(url, evaluation.match);
       await markAttemptsJournaledLater(url, evaluation.match);
     }
   } catch (err) {
