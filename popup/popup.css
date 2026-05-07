@@ -1,21 +1,21 @@
 body {
     background-color: #222;
     color: #eee;
-    width: 220px;
-    min-height: 80px;
+    width: 330px;
+    min-height: 190px;
     margin: 0;
-    padding: 12px;
+    padding: 14px;
     font-family: system-ui, sans-serif;
     font-size: 13px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
 }
 
-#status-container {
+.status-container {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-start;
+    gap: 10px;
 }
 
 .status-icon {
@@ -23,12 +23,49 @@ body {
     height: 12px;
     border-radius: 50%;
     flex-shrink: 0;
+    margin-top: 3px;
     background-color: #888;
 }
 
 .status-icon.allowed { background-color: #4caf50; }
 .status-icon.blocked { background-color: #f44336; }
 .status-icon.neutral { background-color: #888; }
+.status-icon.warning { background-color: #ffb300; }
+
+.status-text {
+    font-weight: 700;
+}
+
+.status-subtext {
+    color: #bbb;
+    font-size: 12px;
+    line-height: 1.35;
+    margin-top: 2px;
+}
+
+.diagnostics {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+}
+
+.diagnostic-row {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 8px;
+}
+
+.diagnostic-row dt {
+    color: #aaa;
+    font-size: 12px;
+}
+
+.diagnostic-row dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
 
 .footer {
     margin-top: auto;

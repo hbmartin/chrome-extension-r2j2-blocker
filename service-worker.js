@@ -60,12 +60,8 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
 
   try {
     const csvText = await fetchJournalCached(s.journalUrl);
-    const keywords = parseLines(s.keywords);
-    const cutoff = Math.floor(Date.now() / 1000) - s.timeframeMinutes * 60;
-    const entries = csvText === null ? [] : parseCSV(csvText);
-    const hasMatch = keywords.length > 0 && entries.some(e =>
-      e.timestamp >= cutoff && keywords.some(kw => e.text.includes(kw))
-    );
+    const evaluation = evaluateJournalAccess(csvText, s.keywords, s.timeframeMinutes);
+    const hasMatch = evaluation.keywords.length > 0 && evaluation.allowed;
 
     if (!hasMatch) {
       redirectToBlockUrl(details.tabId, url, s.blockUrl, blockPatterns);
