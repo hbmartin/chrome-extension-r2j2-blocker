@@ -6,13 +6,45 @@
     <title>Journal Blocker</title>
 </head>
 <body>
-    <div id="status-container">
+    <div id="status-container" class="status-container">
         <div id="status-icon" class="status-icon"></div>
-        <div id="status-text">Checking...</div>
+        <div>
+            <div id="status-text" class="status-text">Checking...</div>
+            <div id="status-subtext" class="status-subtext"></div>
+        </div>
     </div>
+
+    <dl class="diagnostics">
+        <div class="diagnostic-row">
+            <dt>Configuration</dt>
+            <dd id="config-status">Checking...</dd>
+        </div>
+        <div class="diagnostic-row">
+            <dt>Current URL</dt>
+            <dd id="url-status">Checking...</dd>
+        </div>
+        <div class="diagnostic-row">
+            <dt>Journal fetch</dt>
+            <dd id="journal-status">Checking...</dd>
+        </div>
+        <div class="diagnostic-row">
+            <dt>Access</dt>
+            <dd id="access-status">Checking...</dd>
+        </div>
+        <div class="diagnostic-row">
+            <dt>Last match</dt>
+            <dd id="match-status">Checking...</dd>
+        </div>
+        <div class="diagnostic-row">
+            <dt>Expires</dt>
+            <dd id="expiry-status">Checking...</dd>
+        </div>
+    </dl>
+
     <div class="footer">
         <a id="settings-link" href="#">Open Settings</a>
     </div>
+    <script src="../service-worker-utils.js"></script>
     <script src="popup.js"></script>
 </body>
 </html>

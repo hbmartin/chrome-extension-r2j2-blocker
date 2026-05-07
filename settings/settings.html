@@ -36,6 +36,12 @@
         </div>
 
         <div class="field-group">
+            <label for="unlock-cooldown">Access Limit After Unlock (minutes)</label>
+            <p class="hint">Optional. Use 0 to allow access until the journal entry expires.</p>
+            <input type="number" id="unlock-cooldown" min="0" max="10080" value="0">
+        </div>
+
+        <div class="field-group">
             <label for="block-url">Block Redirect URL</label>
             <p class="hint">Where to redirect when a URL is blocked and no journal match is found.</p>
             <input type="text" id="block-url" placeholder="https://example.com/blocked">
@@ -43,11 +49,23 @@
 
         <div class="actions">
             <button type="submit" id="save-btn">Save Settings</button>
+            <button type="button" id="test-btn">Test Settings</button>
             <span id="save-status" class="save-status" aria-live="polite"></span>
         </div>
 
+        <div id="test-result" class="test-result" aria-live="polite"></div>
+
     </form>
 
+    <section class="report-section">
+        <div class="report-header">
+            <h2>Weekly Attention Report</h2>
+            <button type="button" id="refresh-report-btn">Refresh</button>
+        </div>
+        <div id="weekly-report" class="weekly-report" aria-live="polite">Loading report...</div>
+    </section>
+
+    <script src="../service-worker-utils.js"></script>
     <script src="settings.js"></script>
 </body>
 </html>
