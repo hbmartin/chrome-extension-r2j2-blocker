@@ -42,6 +42,12 @@ function formatJournalStatus(result) {
   return `OK (${cacheText}, HTTP ${result.status})`;
 }
 
+async function loadIntentionalSessionsForPopup() {
+  const result = await chrome.storage.local.get({ [INTENTIONAL_SESSIONS_STORAGE_KEY]: [] });
+  const sessions = result[INTENTIONAL_SESSIONS_STORAGE_KEY];
+  return Array.isArray(sessions) ? sessions : [];
+}
+
 function describeMissingConfig(patterns, settings, keywords) {
   const missing = [];
   if (patterns.length === 0) missing.push('blocked URL patterns');
@@ -64,6 +70,7 @@ async function init() {
   const s = { ...DEFAULT_SETTINGS, ...settings };
   const patterns = parseLines(s.blocklist);
   const keywords = parseLines(s.keywords);
+  const cooldownMinutes = normalizeCooldownMinutes(s.unlockCooldownMinutes);
   const missingConfig = describeMissingConfig(patterns, s, keywords);
   const matchedPattern = isWebPage ? findMatchingPattern(url, patterns) : null;
 
@@ -100,9 +107,21 @@ async function init() {
   }
 
   const evaluation = evaluateJournalAccess(journalResult.text, keywords, s.timeframeMinutes);
+  let cooldownStatus = { enabled: cooldownMinutes > 0, blocked: false, expiresAt: null };
+
   if (evaluation.match) {
+    const sessions = await loadIntentionalSessionsForPopup();
+    const session = findIntentionalSession(sessions, domainFromUrl(url), evaluation.match);
+    cooldownStatus = evaluateUnlockCooldown(session, cooldownMinutes);
+    const effectiveExpiresAt = cooldownStatus.expiresAt
+      ? Math.min(evaluation.match.expiresAt, cooldownStatus.expiresAt)
+      : evaluation.match.expiresAt;
+
     setDiagnostic('matchStatus', `"${evaluation.match.keyword}" at ${formatDateTime(evaluation.match.entry.timestamp)}`);
-    setDiagnostic('expiryStatus', formatExpiry(evaluation.match.expiresAt));
+    setDiagnostic(
+      'expiryStatus',
+      cooldownStatus.blocked ? `Access limit ended at ${formatDateTime(cooldownStatus.expiresAt)}` : formatExpiry(effectiveExpiresAt)
+    );
   }
 
   if (!matchedPattern) {
@@ -111,7 +130,10 @@ async function init() {
     return;
   }
 
-  if (evaluation.allowed) {
+  if (evaluation.allowed && cooldownStatus.blocked) {
+    setSummary('blocked', 'Access limit reached', `This journal-backed unlock is limited to ${cooldownMinutes} minutes.`);
+    setDiagnostic('accessStatus', 'Denied by access limit');
+  } else if (evaluation.allowed) {
     setSummary('allowed', 'Access allowed', `Recent journal keyword: "${evaluation.match.keyword}".`);
     setDiagnostic('accessStatus', 'Allowed');
   } else {

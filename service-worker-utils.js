@@ -3,7 +3,8 @@ const DEFAULT_SETTINGS = {
   journalUrl: "",
   keywords: "",
   timeframeMinutes: 60,
-  blockUrl: "about:blank"
+  blockUrl: "about:blank",
+  unlockCooldownMinutes: 0
 };
 
 const BLOCKED_ATTEMPTS_STORAGE_KEY = 'blockedAttempts';
@@ -165,5 +166,39 @@ function evaluateJournalAccess(csvText, keywordsRaw, timeframeMinutes, nowSecond
     keywords,
     match,
     cutoff: nowSeconds - timeframeMinutes * 60
+  };
+}
+
+function normalizeCooldownMinutes(value) {
+  const minutes = parseInt(value, 10);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : 0;
+}
+
+function findIntentionalSession(sessions, domain, match) {
+  if (!domain || !match) return null;
+  return sessions.find(session =>
+    session.domain === domain &&
+    session.keyword === match.keyword &&
+    session.journalTimestamp === match.entry.timestamp
+  ) || null;
+}
+
+function evaluateUnlockCooldown(session, cooldownMinutes, nowSeconds = Math.floor(Date.now() / 1000)) {
+  const minutes = normalizeCooldownMinutes(cooldownMinutes);
+  if (minutes === 0 || !session) {
+    return {
+      enabled: minutes > 0,
+      blocked: false,
+      expiresAt: null
+    };
+  }
+
+  const startedAt = session.timestamp || session.journalTimestamp;
+  const expiresAt = startedAt + minutes * 60;
+  return {
+    enabled: true,
+    blocked: nowSeconds >= expiresAt,
+    startedAt,
+    expiresAt
   };
 }

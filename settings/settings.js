@@ -5,7 +5,8 @@ function readSettingsFromForm() {
     journalUrl: document.getElementById('journal-url').value.trim(),
     keywords: document.getElementById('keywords').value,
     timeframeMinutes: parseInt(document.getElementById('timeframe').value, 10) || 60,
-    blockUrl
+    blockUrl,
+    unlockCooldownMinutes: normalizeCooldownMinutes(document.getElementById('unlock-cooldown').value)
   };
 }
 
@@ -180,6 +181,7 @@ async function loadSettings() {
   document.getElementById('journal-url').value = s.journalUrl;
   document.getElementById('keywords').value = s.keywords;
   document.getElementById('timeframe').value = s.timeframeMinutes;
+  document.getElementById('unlock-cooldown').value = normalizeCooldownMinutes(s.unlockCooldownMinutes);
   document.getElementById('block-url').value = s.blockUrl;
 }
 
@@ -224,10 +226,14 @@ async function testSettings() {
       return;
     }
 
+    const cooldownText = settings.unlockCooldownMinutes > 0
+      ? ` Access limit is ${settings.unlockCooldownMinutes} ${plural(settings.unlockCooldownMinutes, 'minute')} per domain after first unlock.`
+      : '';
+
     showTestResult(
       'success',
       'Configured sites would unlock now',
-      `"${evaluation.match.keyword}" from ${formatDateTime(evaluation.match.entry.timestamp)} unlocks ${formatPatternList(patterns)} until ${formatDateTime(evaluation.match.expiresAt)}. ${evaluation.entries.length} journal rows parsed.`
+      `"${evaluation.match.keyword}" from ${formatDateTime(evaluation.match.entry.timestamp)} unlocks ${formatPatternList(patterns)} until ${formatDateTime(evaluation.match.expiresAt)}.${cooldownText} ${evaluation.entries.length} journal rows parsed.`
     );
   } finally {
     button.disabled = false;

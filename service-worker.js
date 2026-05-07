@@ -6,7 +6,8 @@ function normalizeSettings(settings) {
   const merged = { ...DEFAULT_SETTINGS, ...settings };
   return {
     ...merged,
-    blockUrl: (merged.blockUrl || '').trim() || DEFAULT_SETTINGS.blockUrl
+    blockUrl: (merged.blockUrl || '').trim() || DEFAULT_SETTINGS.blockUrl,
+    unlockCooldownMinutes: normalizeCooldownMinutes(merged.unlockCooldownMinutes)
   };
 }
 
@@ -109,11 +110,7 @@ async function recordIntentionalSession(url, match) {
 
     const sessions = await loadIntentionalSessions();
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const existing = sessions.find(session =>
-      session.domain === domain &&
-      session.keyword === match.keyword &&
-      session.journalTimestamp === match.entry.timestamp
-    );
+    const existing = findIntentionalSession(sessions, domain, match);
 
     if (existing) {
       existing.lastSeenAt = nowSeconds;
@@ -135,6 +132,20 @@ async function recordIntentionalSession(url, match) {
   } catch (err) {
     console.warn('[journal-blocker] Failed to record intentional session:', err);
   }
+}
+
+async function getUnlockCooldownStatus(url, match, cooldownMinutes) {
+  const minutes = normalizeCooldownMinutes(cooldownMinutes);
+  if (minutes === 0 || !match) {
+    return { enabled: false, blocked: false, expiresAt: null };
+  }
+
+  const domain = domainFromUrl(url);
+  if (!domain) return { enabled: true, blocked: false, expiresAt: null };
+
+  const sessions = await loadIntentionalSessions();
+  const session = findIntentionalSession(sessions, domain, match);
+  return evaluateUnlockCooldown(session, minutes);
 }
 
 function redirectToBlockUrl(tabId, currentUrl, blockUrl, blockPatterns) {
@@ -173,6 +184,12 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
       await recordBlockedAttempt(url, matchedPattern);
       redirectToBlockUrl(details.tabId, url, s.blockUrl, blockPatterns);
     } else {
+      const cooldownStatus = await getUnlockCooldownStatus(url, evaluation.match, s.unlockCooldownMinutes);
+      if (cooldownStatus.blocked) {
+        await recordBlockedAttempt(url, matchedPattern);
+        redirectToBlockUrl(details.tabId, url, s.blockUrl, blockPatterns);
+        return;
+      }
       await recordIntentionalSession(url, evaluation.match);
       await markAttemptsJournaledLater(url, evaluation.match);
     }

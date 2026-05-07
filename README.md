@@ -83,6 +83,10 @@ project-name
 
 The number of minutes a journal entry remains valid for allowing access. The default is `60`.
 
+### Access Limit After Unlock
+
+Optional. Set this to `0` to disable it. When enabled, a valid journal entry can unlock each blocked domain only for the configured number of minutes after the first successful access for that journal entry.
+
 ### Block Redirect URL
 
 Where blocked tabs should be redirected when no recent journal match exists. The default is `about:blank`.
@@ -114,6 +118,7 @@ There is no build step. After changing source files, reload the extension from `
 ## Security Notes
 
 - The extension stores settings in Chrome sync storage.
+- Blocked-attempt and intentional-session summaries are stored locally in Chrome local storage.
 - The journal URL may include a backend password, so treat extension configuration as sensitive.
 - The backend should be deployed and secured separately through the R2J2 repository instructions.
 - Fetch failures are treated as blocked navigation.
