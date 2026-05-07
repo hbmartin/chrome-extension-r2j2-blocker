@@ -3,9 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <link rel="stylesheet" href="popup.css">
-    <title>Chrome Addon v3: popup</title>
+    <title>Journal Blocker</title>
 </head>
 <body>
-    This is the <span class="special-text">HTML</span> body of the addon.
+    <div id="status-container">
+        <div id="status-icon" class="status-icon"></div>
+        <div id="status-text">Checking...</div>
+    </div>
+    <div class="footer">
+        <a id="settings-link" href="#">Open Settings</a>
+    </div>
+    <script src="popup.js"></script>
 </body>
 </html>
