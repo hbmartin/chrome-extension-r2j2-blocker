@@ -1,6 +1,8 @@
 importScripts('service-worker-utils.js');
 
 let currentSettings = DEFAULT_SETTINGS;
+const BLOCKED_ATTEMPTS_STORAGE_KEY = 'blockedAttempts';
+const MAX_BLOCKED_ATTEMPTS = 500;
 
 function normalizeSettings(settings) {
   const merged = { ...DEFAULT_SETTINGS, ...settings };
@@ -32,6 +34,71 @@ function urlsAreEqual(firstUrl, secondUrl) {
   }
 }
 
+function domainFromUrl(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch (err) {
+    return '';
+  }
+}
+
+async function loadBlockedAttempts() {
+  const result = await chrome.storage.local.get({ [BLOCKED_ATTEMPTS_STORAGE_KEY]: [] });
+  const attempts = result[BLOCKED_ATTEMPTS_STORAGE_KEY];
+  return Array.isArray(attempts) ? attempts : [];
+}
+
+async function saveBlockedAttempts(attempts) {
+  await chrome.storage.local.set({
+    [BLOCKED_ATTEMPTS_STORAGE_KEY]: attempts.slice(-MAX_BLOCKED_ATTEMPTS)
+  });
+}
+
+async function recordBlockedAttempt(url, matchedPattern) {
+  try {
+    const domain = domainFromUrl(url);
+    if (!domain) return;
+
+    const attempts = await loadBlockedAttempts();
+    attempts.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      domain,
+      matchedPattern,
+      timestamp: Math.floor(Date.now() / 1000),
+      journaledLater: false,
+      journaledAt: null,
+      unlockKeyword: null
+    });
+    await saveBlockedAttempts(attempts);
+  } catch (err) {
+    console.warn('[journal-blocker] Failed to record blocked attempt:', err);
+  }
+}
+
+async function markAttemptsJournaledLater(url, match) {
+  try {
+    if (!match) return;
+    const domain = domainFromUrl(url);
+    if (!domain) return;
+
+    const attempts = await loadBlockedAttempts();
+    let changed = false;
+
+    for (const attempt of attempts) {
+      if (attempt.domain !== domain || attempt.journaledLater) continue;
+      if (attempt.timestamp > match.entry.timestamp) continue;
+      attempt.journaledLater = true;
+      attempt.journaledAt = match.entry.timestamp;
+      attempt.unlockKeyword = match.keyword;
+      changed = true;
+    }
+
+    if (changed) await saveBlockedAttempts(attempts);
+  } catch (err) {
+    console.warn('[journal-blocker] Failed to update blocked attempts:', err);
+  }
+}
+
 function redirectToBlockUrl(tabId, currentUrl, blockUrl, blockPatterns) {
   let targetUrl = blockUrl;
   if (urlMatchesAnyPattern(targetUrl, blockPatterns)) {
@@ -56,7 +123,8 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   const blockPatterns = parseLines(s.blocklist);
   if (blockPatterns.length === 0) return;
 
-  if (!urlMatchesAnyPattern(url, blockPatterns)) return;
+  const matchedPattern = findMatchingPattern(url, blockPatterns);
+  if (!matchedPattern) return;
 
   try {
     const csvText = await fetchJournalCached(s.journalUrl);
@@ -64,10 +132,14 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
     const hasMatch = evaluation.keywords.length > 0 && evaluation.allowed;
 
     if (!hasMatch) {
+      await recordBlockedAttempt(url, matchedPattern);
       redirectToBlockUrl(details.tabId, url, s.blockUrl, blockPatterns);
+    } else {
+      await markAttemptsJournaledLater(url, evaluation.match);
     }
   } catch (err) {
     console.warn('[journal-blocker] Error during check, blocking navigation:', err);
+    await recordBlockedAttempt(url, matchedPattern);
     redirectToBlockUrl(details.tabId, url, s.blockUrl, blockPatterns);
   }
 }, { url: [{ schemes: ['http', 'https'] }] });
