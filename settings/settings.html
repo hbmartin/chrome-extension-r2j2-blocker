@@ -55,6 +55,16 @@
 
         <div id="test-result" class="test-result" aria-live="polite"></div>
 
+        <div class="file-section">
+            <h2>Settings JSON</h2>
+            <div class="file-actions">
+                <button type="button" id="export-settings-btn">Export JSON</button>
+                <button type="button" id="import-settings-btn">Import JSON</button>
+                <input type="file" id="import-settings-file" accept="application/json,.json">
+                <span id="settings-file-status" class="file-status" aria-live="polite"></span>
+            </div>
+        </div>
+
     </form>
 
     <section class="report-section">
