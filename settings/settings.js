@@ -1,13 +1,146 @@
+const SETTINGS_EXPORT_VERSION = 1;
+const SETTING_KEYS = Object.keys(DEFAULT_SETTINGS);
+
+let saveStatusTimer = null;
+let fileStatusTimer = null;
+
+function normalizeTextSetting(value, { multiline = false } = {}) {
+  if (Array.isArray(value) && multiline) {
+    return value
+      .map(item => (typeof item === 'string' ? item.trim() : ''))
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  return typeof value === 'string' ? value : '';
+}
+
+function normalizeSettingsForForm(settings) {
+  const merged = { ...DEFAULT_SETTINGS, ...(settings || {}) };
+  const blockUrl = normalizeTextSetting(merged.blockUrl).trim() || DEFAULT_SETTINGS.blockUrl;
+
+  return {
+    blocklist: normalizeTextSetting(merged.blocklist, { multiline: true }),
+    journalUrl: normalizeTextSetting(merged.journalUrl).trim(),
+    keywords: normalizeTextSetting(merged.keywords, { multiline: true }),
+    timeframeMinutes: normalizeTimeframeMinutes(merged.timeframeMinutes),
+    blockUrl,
+    unlockCooldownMinutes: normalizeCooldownMinutes(merged.unlockCooldownMinutes)
+  };
+}
+
+function writeSettingsToForm(settings) {
+  const s = normalizeSettingsForForm(settings);
+  document.getElementById('blocklist').value = s.blocklist;
+  document.getElementById('journal-url').value = s.journalUrl;
+  document.getElementById('keywords').value = s.keywords;
+  document.getElementById('timeframe').value = s.timeframeMinutes;
+  document.getElementById('unlock-cooldown').value = s.unlockCooldownMinutes;
+  document.getElementById('block-url').value = s.blockUrl;
+  return s;
+}
+
 function readSettingsFromForm() {
   const blockUrl = document.getElementById('block-url').value.trim() || DEFAULT_SETTINGS.blockUrl;
   return {
     blocklist: document.getElementById('blocklist').value,
     journalUrl: document.getElementById('journal-url').value.trim(),
     keywords: document.getElementById('keywords').value,
-    timeframeMinutes: parseInt(document.getElementById('timeframe').value, 10) || 60,
+    timeframeMinutes: normalizeTimeframeMinutes(document.getElementById('timeframe').value),
     blockUrl,
     unlockCooldownMinutes: normalizeCooldownMinutes(document.getElementById('unlock-cooldown').value)
   };
+}
+
+function showSaveStatus(message) {
+  const status = document.getElementById('save-status');
+  status.textContent = message;
+  if (saveStatusTimer) clearTimeout(saveStatusTimer);
+  saveStatusTimer = setTimeout(() => { status.textContent = ''; }, 2000);
+}
+
+function showFileStatus(kind, message) {
+  const status = document.getElementById('settings-file-status');
+  status.className = `file-status ${kind}`;
+  status.textContent = message;
+  if (fileStatusTimer) clearTimeout(fileStatusTimer);
+  fileStatusTimer = setTimeout(() => {
+    status.className = 'file-status';
+    status.textContent = '';
+  }, 4000);
+}
+
+function extractImportedSettingsPayload(parsed) {
+  const candidate = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.settings
+    ? parsed.settings
+    : parsed;
+
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    throw new Error('JSON does not contain extension settings.');
+  }
+
+  const hasKnownSetting = SETTING_KEYS.some(key => Object.prototype.hasOwnProperty.call(candidate, key));
+  if (!hasKnownSetting) {
+    throw new Error('JSON does not contain extension settings.');
+  }
+
+  return candidate;
+}
+
+function normalizeImportedSettings(parsed) {
+  return normalizeSettingsForForm(extractImportedSettingsPayload(parsed));
+}
+
+function downloadSettingsJson(payload) {
+  const json = `${JSON.stringify(payload, null, 2)}\n`;
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const date = new Date().toISOString().slice(0, 10);
+  link.href = url;
+  link.download = `journal-blocker-settings-${date}.json`;
+  link.style.display = 'none';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function exportSettings() {
+  try {
+    downloadSettingsJson({
+      version: SETTINGS_EXPORT_VERSION,
+      exportedAt: new Date().toISOString(),
+      settings: readSettingsFromForm()
+    });
+    showFileStatus('success', 'Settings exported.');
+  } catch (err) {
+    console.error('Failed to export settings', err);
+    showFileStatus('error', 'Unable to export settings.');
+  }
+}
+
+async function importSettingsFromFile(event) {
+  const input = event.target;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  try {
+    const parsed = JSON.parse(await file.text());
+    const settings = normalizeImportedSettings(parsed);
+    writeSettingsToForm(settings);
+    await chrome.storage.sync.set({ settings });
+    showSaveStatus('Saved!');
+    showFileStatus('success', 'Settings imported and saved.');
+  } catch (err) {
+    console.error('Failed to import settings', err);
+    const message = err instanceof SyntaxError
+      ? 'Import failed: invalid JSON.'
+      : `Import failed: ${err?.message || 'Unable to read file.'}`;
+    showFileStatus('error', message);
+  } finally {
+    input.value = '';
+  }
 }
 
 function formatDateTime(timestampSeconds) {
@@ -109,10 +242,13 @@ function appendReportList(container, title, items, ordered, emptyText) {
 function summarizeSessionsByDomain(sessions) {
   const summary = new Map();
   for (const session of sessions) {
-    const current = summary.get(session.domain) || { sessions: 0, visits: 0 };
+    const domain = typeof session?.domain === 'string' ? session.domain.trim() : '';
+    if (!domain) continue;
+    const visitCount = Number.isFinite(session.visitCount) && session.visitCount > 0 ? session.visitCount : 1;
+    const current = summary.get(domain) || { sessions: 0, visits: 0 };
     current.sessions += 1;
-    current.visits += session.visitCount || 1;
-    summary.set(session.domain, current);
+    current.visits += visitCount;
+    summary.set(domain, current);
   }
   return Array.from(summary.entries())
     .sort((a, b) => b[1].sessions - a[1].sessions || b[1].visits - a[1].visits || a[0].localeCompare(b[0]))
@@ -152,6 +288,7 @@ function renderWeeklyReport(attempts, sessions) {
 
 async function loadWeeklyReport() {
   const refreshButton = document.getElementById('refresh-report-btn');
+  const report = document.getElementById('weekly-report');
   refreshButton.disabled = true;
 
   try {
@@ -164,11 +301,14 @@ async function loadWeeklyReport() {
     const attemptsRaw = result[BLOCKED_ATTEMPTS_STORAGE_KEY];
     const sessionsRaw = result[INTENTIONAL_SESSIONS_STORAGE_KEY];
     const attempts = (Array.isArray(attemptsRaw) ? attemptsRaw : [])
-      .filter(attempt => attempt.timestamp >= weekAgo);
+      .filter(attempt => attempt?.timestamp >= weekAgo);
     const sessions = (Array.isArray(sessionsRaw) ? sessionsRaw : [])
-      .filter(session => (session.lastSeenAt || session.timestamp) >= weekAgo);
+      .filter(session => (session?.lastSeenAt || session?.timestamp) >= weekAgo);
 
     renderWeeklyReport(attempts, sessions);
+  } catch (err) {
+    report.textContent = 'Unable to load weekly report right now.';
+    console.error('Failed to load weekly report', err);
   } finally {
     refreshButton.disabled = false;
   }
@@ -176,22 +316,14 @@ async function loadWeeklyReport() {
 
 async function loadSettings() {
   const { settings } = await chrome.storage.sync.get({ settings: DEFAULT_SETTINGS });
-  const s = { ...DEFAULT_SETTINGS, ...settings };
-  document.getElementById('blocklist').value = s.blocklist;
-  document.getElementById('journal-url').value = s.journalUrl;
-  document.getElementById('keywords').value = s.keywords;
-  document.getElementById('timeframe').value = s.timeframeMinutes;
-  document.getElementById('unlock-cooldown').value = normalizeCooldownMinutes(s.unlockCooldownMinutes);
-  document.getElementById('block-url').value = s.blockUrl;
+  writeSettingsToForm(settings);
 }
 
 async function saveSettings(e) {
   e.preventDefault();
   const settings = readSettingsFromForm();
   await chrome.storage.sync.set({ settings });
-  const status = document.getElementById('save-status');
-  status.textContent = 'Saved!';
-  setTimeout(() => { status.textContent = ''; }, 2000);
+  showSaveStatus('Saved!');
 }
 
 async function testSettings() {
@@ -244,5 +376,10 @@ async function testSettings() {
 document.getElementById('settings-form').addEventListener('submit', saveSettings);
 document.getElementById('test-btn').addEventListener('click', testSettings);
 document.getElementById('refresh-report-btn').addEventListener('click', loadWeeklyReport);
+document.getElementById('export-settings-btn').addEventListener('click', exportSettings);
+document.getElementById('import-settings-btn').addEventListener('click', () => {
+  document.getElementById('import-settings-file').click();
+});
+document.getElementById('import-settings-file').addEventListener('change', importSettingsFromFile);
 loadSettings();
 loadWeeklyReport();

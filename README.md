@@ -93,6 +93,29 @@ Where blocked tabs should be redirected when no recent journal match exists. The
 
 If the redirect URL itself matches the blocklist, the extension falls back to `about:blank` to avoid redirect loops.
 
+### Import and Export
+
+The settings page can export the current form values as a JSON file and import JSON settings back into Chrome sync storage.
+
+Exports use this shape:
+
+```json
+{
+  "version": 1,
+  "exportedAt": "2026-05-11T00:00:00.000Z",
+  "settings": {
+    "blocklist": "reddit.com",
+    "journalUrl": "https://example.com/journal.csv",
+    "keywords": "research",
+    "timeframeMinutes": 60,
+    "blockUrl": "about:blank",
+    "unlockCooldownMinutes": 0
+  }
+}
+```
+
+Import also accepts a raw settings object with the same fields as `settings`.
+
 ## Logo Assets
 
 The source logo is `logo/logo.png`. Regenerate the Chrome icon sizes with:

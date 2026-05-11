@@ -68,7 +68,9 @@ input[type="number"] {
 
 #save-btn,
 #test-btn,
-#refresh-report-btn {
+#refresh-report-btn,
+#export-settings-btn,
+#import-settings-btn {
     background-color: #1565c0;
     color: #fff;
     border: none;
@@ -79,7 +81,9 @@ input[type="number"] {
 }
 
 #test-btn,
-#refresh-report-btn {
+#refresh-report-btn,
+#export-settings-btn,
+#import-settings-btn {
     background-color: #333;
     border: 1px solid #666;
     padding: 7px 20px;
@@ -90,12 +94,16 @@ input[type="number"] {
 }
 
 #test-btn:hover,
-#refresh-report-btn:hover {
+#refresh-report-btn:hover,
+#export-settings-btn:hover,
+#import-settings-btn:hover {
     background-color: #3d3d3d;
 }
 
 #test-btn:disabled,
-#refresh-report-btn:disabled {
+#refresh-report-btn:disabled,
+#export-settings-btn:disabled,
+#import-settings-btn:disabled {
     color: #aaa;
     cursor: progress;
 }
@@ -138,6 +146,37 @@ input[type="number"] {
 .test-result-detail {
     color: #bbb;
     font-size: 13px;
+}
+
+.file-section {
+    border-top: 1px solid #444;
+    margin-top: 24px;
+    padding-top: 20px;
+}
+
+.file-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+#import-settings-file {
+    display: none;
+}
+
+.file-status {
+    color: #aaa;
+    font-size: 13px;
+}
+
+.file-status.success {
+    color: #4caf50;
+}
+
+.file-status.error {
+    color: #ff8a80;
 }
 
 .report-section {
