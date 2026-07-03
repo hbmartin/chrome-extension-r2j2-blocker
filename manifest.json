@@ -2,7 +2,8 @@
     "manifest_version": 3,
     "name": "Journal-Gated URL Blocker",
     "description": "Blocks URLs unless you have journaled a matching keyword recently",
-    "version": "1.0.0",
+    "version": "1.1.0",
+    "minimum_chrome_version": "102",
     "icons": {
         "16": "logo/logo-16.png",
         "48": "logo/logo-48.png",

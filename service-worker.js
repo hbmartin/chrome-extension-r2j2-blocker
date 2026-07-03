@@ -7,6 +7,7 @@ function normalizeSettings(settings) {
   return {
     ...merged,
     blockUrl: (merged.blockUrl || '').trim() || DEFAULT_SETTINGS.blockUrl,
+    timeframeMinutes: normalizeTimeframeMinutes(merged.timeframeMinutes),
     unlockCooldownMinutes: normalizeCooldownMinutes(merged.unlockCooldownMinutes)
   };
 }
@@ -28,7 +29,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 function urlsAreEqual(firstUrl, secondUrl) {
   try {
     return new URL(firstUrl).href === new URL(secondUrl).href;
-  } catch (err) {
+  } catch {
     return firstUrl === secondUrl;
   }
 }
@@ -41,7 +42,7 @@ async function loadBlockedAttempts() {
 
 async function saveBlockedAttempts(attempts) {
   await chrome.storage.local.set({
-    [BLOCKED_ATTEMPTS_STORAGE_KEY]: attempts.slice(-MAX_BLOCKED_ATTEMPTS)
+    [BLOCKED_ATTEMPTS_STORAGE_KEY]: pruneOldRecords(attempts).slice(-MAX_BLOCKED_ATTEMPTS)
   });
 }
 
@@ -98,11 +99,13 @@ async function loadIntentionalSessions() {
 
 async function saveIntentionalSessions(sessions) {
   await chrome.storage.local.set({
-    [INTENTIONAL_SESSIONS_STORAGE_KEY]: sessions.slice(-MAX_INTENTIONAL_SESSIONS)
+    [INTENTIONAL_SESSIONS_STORAGE_KEY]: pruneOldRecords(sessions).slice(-MAX_INTENTIONAL_SESSIONS)
   });
 }
 
-async function recordIntentionalSession(url, match) {
+// countVisit is false for SPA history updates so client-side route changes
+// refresh lastSeenAt without inflating the visit count.
+async function recordIntentionalSession(url, match, { countVisit = true } = {}) {
   try {
     if (!match) return;
     const domain = domainFromUrl(url);
@@ -114,7 +117,7 @@ async function recordIntentionalSession(url, match) {
 
     if (existing) {
       existing.lastSeenAt = nowSeconds;
-      existing.visitCount = (existing.visitCount || 1) + 1;
+      if (countVisit) existing.visitCount = (existing.visitCount || 1) + 1;
     } else {
       sessions.push({
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -160,7 +163,62 @@ function redirectToBlockUrl(tabId, currentUrl, blockUrl, blockPatterns) {
   });
 }
 
-chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
+const BADGE_COLORS = {
+  allowed: '#1e8e3e',
+  blocked: '#d93025'
+};
+
+function formatBadgeMinutes(expiresAt, nowSeconds = Math.floor(Date.now() / 1000)) {
+  const minutes = Math.max(0, Math.ceil((expiresAt - nowSeconds) / 60));
+  return minutes > 99 ? '99+' : `${minutes}m`;
+}
+
+async function setTabBadge(tabId, text, color) {
+  try {
+    await chrome.action.setBadgeText({ tabId, text });
+    if (color) await chrome.action.setBadgeBackgroundColor({ tabId, color });
+  } catch {
+    // The tab may already be gone; badge updates are best-effort.
+  }
+}
+
+// Shows at a glance whether the current site is journal-gated: green with
+// minutes remaining when unlocked, red ✕ when blocked, empty otherwise.
+async function updateBadgeForTab(tabId, url) {
+  if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+    return setTabBadge(tabId, '');
+  }
+
+  await settingsReady;
+  const s = currentSettings;
+  const blockPatterns = parseLines(s.blocklist);
+  const matchedPattern = findMatchingPattern(url, blockPatterns);
+  if (!matchedPattern) return setTabBadge(tabId, '');
+
+  try {
+    const csvText = await fetchJournalCached(s.journalUrl);
+    const evaluation = evaluateJournalAccess(csvText, s.keywords, s.timeframeMinutes);
+    if (!(evaluation.keywords.length > 0 && evaluation.allowed)) {
+      return setTabBadge(tabId, '✕', BADGE_COLORS.blocked);
+    }
+
+    const cooldownStatus = await getUnlockCooldownStatus(url, evaluation.match, s.unlockCooldownMinutes);
+    if (cooldownStatus.blocked) {
+      return setTabBadge(tabId, '✕', BADGE_COLORS.blocked);
+    }
+
+    const expiresAt = cooldownStatus.expiresAt
+      ? Math.min(evaluation.match.expiresAt, cooldownStatus.expiresAt)
+      : evaluation.match.expiresAt;
+    return setTabBadge(tabId, formatBadgeMinutes(expiresAt), BADGE_COLORS.allowed);
+  } catch {
+    return setTabBadge(tabId, '✕', BADGE_COLORS.blocked);
+  }
+}
+
+// Shared by real navigations (onBeforeNavigate) and SPA route changes
+// (onHistoryStateUpdated) so client-side navigation cannot bypass the gate.
+async function handleNavigation(details, { isHistoryUpdate = false } = {}) {
   if (details.frameId !== 0) return;
 
   const url = details.url;
@@ -190,12 +248,37 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
         redirectToBlockUrl(details.tabId, url, s.blockUrl, blockPatterns);
         return;
       }
-      await recordIntentionalSession(url, evaluation.match);
+      await recordIntentionalSession(url, evaluation.match, { countVisit: !isHistoryUpdate });
       await markAttemptsJournaledLater(url, evaluation.match);
+      await updateBadgeForTab(details.tabId, url);
     }
   } catch (err) {
     console.warn('[journal-blocker] Error during check, blocking navigation:', err);
     await recordBlockedAttempt(url, matchedPattern);
     redirectToBlockUrl(details.tabId, url, s.blockUrl, blockPatterns);
   }
-}, { url: [{ schemes: ['http', 'https'] }] });
+}
+
+const NAVIGATION_FILTER = { url: [{ schemes: ['http', 'https'] }] };
+
+chrome.webNavigation.onBeforeNavigate.addListener(details => {
+  handleNavigation(details);
+}, NAVIGATION_FILTER);
+
+chrome.webNavigation.onHistoryStateUpdated.addListener(details => {
+  handleNavigation(details, { isHistoryUpdate: true });
+}, NAVIGATION_FILTER);
+
+chrome.webNavigation.onCompleted.addListener(details => {
+  if (details.frameId !== 0) return;
+  updateBadgeForTab(details.tabId, details.url);
+}, NAVIGATION_FILTER);
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    await updateBadgeForTab(tabId, tab?.url || '');
+  } catch {
+    // The tab may already be gone.
+  }
+});

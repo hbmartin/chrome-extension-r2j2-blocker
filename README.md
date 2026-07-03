@@ -13,6 +13,10 @@ The extension is designed to work with the [R2J2 backend](https://github.com/hbm
 5. Access is allowed only if a configured keyword appears in a journal entry inside the configured timeframe.
 6. If no recent match is found, the tab is redirected to the configured block URL.
 
+Both full page loads and single-page-app route changes (history.pushState) are checked, so client-side navigation inside a site cannot bypass the gate.
+
+The toolbar icon shows a per-tab badge for journal-gated sites: green with the minutes remaining while unlocked, or a red ✕ while blocked. The badge is empty on pages that do not match your blocklist.
+
 Matching is intentionally simple:
 
 - Blocked URLs use case-insensitive substring matching against the full URL.
@@ -67,7 +71,7 @@ The R2J2 CSV endpoint, including its password query parameter.
 https://your-worker.your-subdomain.workers.dev/csv?password=your-secret
 ```
 
-The service worker caches this response for 60 seconds to avoid fetching the backend on every navigation.
+The service worker caches this response for 60 seconds to avoid fetching the backend on every navigation. The cache lives in `chrome.storage.session`, so it survives Manifest V3 service worker restarts but is cleared when the browser closes.
 
 ### Keywords
 
@@ -138,10 +142,36 @@ This is a Manifest V3 extension. The background logic lives in `service-worker.j
 
 There is no build step. After changing source files, reload the extension from `chrome://extensions`.
 
+### Tests and Linting
+
+The pure helpers in `service-worker-utils.js` are covered by unit tests that run on Node's built-in test runner (no test framework dependency):
+
+```bash
+npm install
+npm test
+npm run lint
+```
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs the linter and tests on every push to `main` and on every pull request.
+
 ## Security Notes
 
 - The extension stores settings in Chrome sync storage.
-- Blocked-attempt and intentional-session summaries are stored locally in Chrome local storage.
+- Blocked-attempt and intentional-session summaries are stored locally in Chrome local storage, and records older than 30 days are pruned automatically.
 - The journal URL may include a backend password, so treat extension configuration as sensitive.
+- Error messages and logs redact the journal URL's query string, so the password does not appear in the console or the popup diagnostics.
 - The backend should be deployed and secured separately through the R2J2 repository instructions.
 - Fetch failures are treated as blocked navigation.
+
+## Roadmap
+
+Ideas that are noted but not implemented yet:
+
+- **declarativeNetRequest-based blocking.** Blocking currently happens by redirecting the tab after `webNavigation.onBeforeNavigate`, so a blocked page can briefly start loading while the journal check runs. Dynamic `declarativeNetRequest` rules would block instantly at the network layer and swap out when a journal match unlocks a domain.
+- **Last-known-good grace period.** Fetch failures fail closed, so a backend outage or captive-portal Wi-Fi blocks every configured site. A short window that honors the most recent successful journal match during fetch failures (with a clear popup indicator) would soften total lockouts.
+- **Narrower host permissions.** The extension currently requests `*://*/*`. It only needs to fetch the journal URL, so `optional_host_permissions` scoped to the journal's origin at configuration time would reduce the permission footprint.
+- **Journal password out of the synced URL.** Store the password separately in `chrome.storage.local` (never synced), have the backend accept it as a header, and exclude it from JSON settings exports.
+- **Packaged releases.** A CI step that zips the extension and attaches it to GitHub releases, so installs do not require "load unpacked" from a cloned repo.
+- **Hostname-based pattern matching.** Substring matching over the full URL means `reddit.com` also matches unrelated URLs that merely contain that string. Matching against the hostname with wildcard subdomain support (`*.reddit.com`) would be more predictable.
+- **Custom block page.** Replace `about:blank` with a bundled page that explains why the navigation was blocked, shows which keywords would unlock it, and offers a "journal right now" box that posts to the R2J2 write endpoint and retries the original URL.
+- **Per-pattern keywords or profiles.** Let each blocked pattern require its own keywords (for example `youtube.com` requires `video-research` while `twitter.com` requires `outreach`) instead of any keyword unlocking every site.
