@@ -1,0 +1,15 @@
+{
+  "name": "journal-gated-url-blocker",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Chrome extension that blocks distracting URLs unless you have recently journaled a matching keyword",
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\"",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0"
+  }
+}
