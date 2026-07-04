@@ -31,27 +31,41 @@ const sharedUtilsGlobals = {
   evaluateUnlockCooldown: 'readonly'
 };
 
+const browserExtensionRules = {
+  'no-unused-vars': ['error', {
+    argsIgnorePattern: '^_',
+    caughtErrorsIgnorePattern: '^_'
+  }]
+};
+
 module.exports = [
   { ignores: ['node_modules/'] },
   js.configs.recommended,
   {
-    files: ['service-worker.js', 'service-worker-utils.js', 'popup/**/*.js', 'settings/**/*.js'],
+    files: ['service-worker.js', 'service-worker-utils.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'script',
+      globals: {
+        ...globals.webextensions,
+        ...globals.worker,
+        module: 'readonly'
+      }
+    },
+    rules: browserExtensionRules
+  },
+  {
+    files: ['popup/**/*.js', 'settings/**/*.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'script',
       globals: {
         ...globals.browser,
         ...globals.webextensions,
-        ...globals.worker,
         module: 'readonly'
       }
     },
-    rules: {
-      'no-unused-vars': ['error', {
-        argsIgnorePattern: '^_',
-        caughtErrorsIgnorePattern: '^_'
-      }]
-    }
+    rules: browserExtensionRules
   },
   {
     // Files that consume the helpers defined by service-worker-utils.js.

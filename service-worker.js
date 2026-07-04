@@ -46,22 +46,35 @@ async function saveBlockedAttempts(attempts) {
   });
 }
 
+let blockedAttemptsWrite = Promise.resolve();
+let intentionalSessionsWrite = Promise.resolve();
+
+function updateBlockedAttempts(mutator) {
+  const operation = blockedAttemptsWrite.catch(() => {}).then(async () => {
+    const attempts = await loadBlockedAttempts();
+    const shouldSave = mutator(attempts) !== false;
+    if (shouldSave) await saveBlockedAttempts(attempts);
+  });
+  blockedAttemptsWrite = operation.catch(() => {});
+  return operation;
+}
+
 async function recordBlockedAttempt(url, matchedPattern) {
   try {
     const domain = domainFromUrl(url);
     if (!domain) return;
 
-    const attempts = await loadBlockedAttempts();
-    attempts.push({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      domain,
-      matchedPattern,
-      timestamp: Math.floor(Date.now() / 1000),
-      journaledLater: false,
-      journaledAt: null,
-      unlockKeyword: null
+    await updateBlockedAttempts(attempts => {
+      attempts.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        domain,
+        matchedPattern,
+        timestamp: Math.floor(Date.now() / 1000),
+        journaledLater: false,
+        journaledAt: null,
+        unlockKeyword: null
+      });
     });
-    await saveBlockedAttempts(attempts);
   } catch (err) {
     console.warn('[journal-blocker] Failed to record blocked attempt:', err);
   }
@@ -73,19 +86,20 @@ async function markAttemptsJournaledLater(url, match) {
     const domain = domainFromUrl(url);
     if (!domain) return;
 
-    const attempts = await loadBlockedAttempts();
-    let changed = false;
+    await updateBlockedAttempts(attempts => {
+      let changed = false;
 
-    for (const attempt of attempts) {
-      if (attempt.domain !== domain || attempt.journaledLater) continue;
-      if (attempt.timestamp > match.entry.timestamp) continue;
-      attempt.journaledLater = true;
-      attempt.journaledAt = match.entry.timestamp;
-      attempt.unlockKeyword = match.keyword;
-      changed = true;
-    }
+      for (const attempt of attempts) {
+        if (attempt.domain !== domain || attempt.journaledLater) continue;
+        if (attempt.timestamp > match.entry.timestamp) continue;
+        attempt.journaledLater = true;
+        attempt.journaledAt = match.entry.timestamp;
+        attempt.unlockKeyword = match.keyword;
+        changed = true;
+      }
 
-    if (changed) await saveBlockedAttempts(attempts);
+      return changed;
+    });
   } catch (err) {
     console.warn('[journal-blocker] Failed to update blocked attempts:', err);
   }
@@ -103,6 +117,16 @@ async function saveIntentionalSessions(sessions) {
   });
 }
 
+function updateIntentionalSessions(mutator) {
+  const operation = intentionalSessionsWrite.catch(() => {}).then(async () => {
+    const sessions = await loadIntentionalSessions();
+    const shouldSave = mutator(sessions) !== false;
+    if (shouldSave) await saveIntentionalSessions(sessions);
+  });
+  intentionalSessionsWrite = operation.catch(() => {});
+  return operation;
+}
+
 // countVisit is false for SPA history updates so client-side route changes
 // refresh lastSeenAt without inflating the visit count.
 async function recordIntentionalSession(url, match, { countVisit = true } = {}) {
@@ -111,27 +135,26 @@ async function recordIntentionalSession(url, match, { countVisit = true } = {}) 
     const domain = domainFromUrl(url);
     if (!domain) return;
 
-    const sessions = await loadIntentionalSessions();
-    const nowSeconds = Math.floor(Date.now() / 1000);
-    const existing = findIntentionalSession(sessions, domain, match);
+    await updateIntentionalSessions(sessions => {
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const existing = findIntentionalSession(sessions, domain, match);
 
-    if (existing) {
-      existing.lastSeenAt = nowSeconds;
-      if (countVisit) existing.visitCount = (existing.visitCount || 1) + 1;
-    } else {
-      sessions.push({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        domain,
-        keyword: match.keyword,
-        timestamp: nowSeconds,
-        lastSeenAt: nowSeconds,
-        journalTimestamp: match.entry.timestamp,
-        expiresAt: match.expiresAt,
-        visitCount: 1
-      });
-    }
-
-    await saveIntentionalSessions(sessions);
+      if (existing) {
+        existing.lastSeenAt = nowSeconds;
+        if (countVisit) existing.visitCount = (existing.visitCount || 1) + 1;
+      } else {
+        sessions.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          domain,
+          keyword: match.keyword,
+          timestamp: nowSeconds,
+          lastSeenAt: nowSeconds,
+          journalTimestamp: match.entry.timestamp,
+          expiresAt: match.expiresAt,
+          visitCount: 1
+        });
+      }
+    });
   } catch (err) {
     console.warn('[journal-blocker] Failed to record intentional session:', err);
   }
