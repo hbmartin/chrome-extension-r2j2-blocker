@@ -164,10 +164,11 @@ test('pruneOldRecords drops records older than the max age', () => {
   const fresh = { timestamp: NOW - 60 };
   const stale = { timestamp: NOW - MAX_RECORD_AGE_SECONDS - 1 };
   const staleButSeenRecently = { timestamp: NOW - MAX_RECORD_AGE_SECONDS - 1, lastSeenAt: NOW - 60 };
+  const freshTimestampButNeverSeen = { timestamp: NOW - 60, lastSeenAt: 0 };
   const invalid = { note: 'no timestamps' };
 
   assert.deepEqual(
-    pruneOldRecords([fresh, stale, staleButSeenRecently, invalid], NOW),
+    pruneOldRecords([fresh, stale, staleButSeenRecently, freshTimestampButNeverSeen, invalid], NOW),
     [fresh, staleButSeenRecently]
   );
   assert.deepEqual(pruneOldRecords('not an array', NOW), []);

@@ -233,7 +233,7 @@ function pruneOldRecords(records, nowSeconds = Math.floor(Date.now() / 1000), ma
   if (!Array.isArray(records)) return [];
   const cutoff = nowSeconds - maxAgeSeconds;
   return records.filter(record => {
-    const seenAt = record?.lastSeenAt || record?.timestamp;
+    const seenAt = record?.lastSeenAt ?? record?.timestamp;
     return Number.isFinite(seenAt) && seenAt >= cutoff;
   });
 }

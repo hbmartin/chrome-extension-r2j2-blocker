@@ -1,0 +1,54 @@
+rules:
+  - id: require-nullish-last-seen-at-fallback
+    languages:
+      - javascript
+    severity: ERROR
+    message: Use ?? so lastSeenAt keeps precedence when it is 0.
+    paths:
+      include:
+        - service-worker-utils.js
+    pattern: $RECORD?.lastSeenAt || $RECORD?.timestamp
+  - id: no-browser-globals-for-service-worker-eslint-block
+    languages:
+      - javascript
+    severity: ERROR
+    message: Do not include globals.browser in ESLint config blocks that cover service-worker files.
+    paths:
+      include:
+        - eslint.config.js
+    patterns:
+      - pattern-inside: |
+          {
+            files: [..., "service-worker.js", ...],
+            ...
+          }
+      - pattern-inside: |
+          globals: {
+            ...
+            ...globals.browser,
+            ...
+          }
+      - pattern: globals.browser
+  - id: chrome-storage-local-read-modify-write-without-queue
+    languages:
+      - javascript
+    severity: WARNING
+    message: Use a serialized update helper for chrome.storage.local read-modify-write flows.
+    patterns:
+      - pattern-either:
+          - pattern: |
+              async function $FUNC(...) {
+                ...
+                chrome.storage.local.get(...)
+                ...
+                chrome.storage.local.set(...)
+                ...
+              }
+          - pattern: |
+              $FUNC = async (...) => {
+                ...
+                chrome.storage.local.get(...)
+                ...
+                chrome.storage.local.set(...)
+                ...
+              }
